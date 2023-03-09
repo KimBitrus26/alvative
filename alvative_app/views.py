@@ -1,12 +1,11 @@
-import pytz
+import hashlib
+import hmac
 import requests
+import json
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from django.utils.decorators import method_decorator
-from django.utils.text import slugify
-from rest_framework.generics import RetrieveAPIView
 
 from rest_framework.response import Response
 from rest_framework import status
@@ -15,7 +14,7 @@ from rest_framework.permissions import AllowAny
 
 from .utils import Helper, PayStackRequestHelper
 from .serializers import (InitiateSendPaymentSerializer, ResolveBankSerializer, BankAccountSerializer)
-from .models import (Transaction, )
+from .models import (Transaction, DumpPaystackData)
 
 
 class InitiateSendPaymentView(APIView):
@@ -122,3 +121,25 @@ class BankAaccountView(APIView):
             return Response({"status": "Success", "data":  serializer.data}, status=status.HTTP_201_CREATED)
 
         return Response({"status": "Failde"}, status=status.HTTP_400_BAD_REQUEST)
+    
+class WebhookView(APIView):
+    permission_classes = (AllowAny,)
+
+    def post(self, request, *args, **kwargs):
+        json_body = json.loads(request.body)
+
+        computed_hmac = hmac.new(
+            bytes(settings.PAYSTACK_SEC_KEY, 'utf-8'),
+            str.encode(request.body.decode('utf-8')),
+            digestmod=hashlib.sha512
+        ).hexdigest()
+
+        if 'HTTP_X_PAYSTACK_SIGNATURE' in request.META:
+            if request.META['HTTP_X_PAYSTACK_SIGNATURE'] == computed_hmac:
+                if json_body['event'] == 'charge.success':
+                    json_data = json_body['data']
+                    DumpPaystackData.objects.create(dump_data=json_data)   
+                    return Response(status=200)
+            return Response(status=400)
+        else:
+            return Response(status=400)

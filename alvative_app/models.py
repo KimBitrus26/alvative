@@ -47,4 +47,12 @@ class BankAccount(TimeStampMixin):
 
     def __str__(self):
         return f"{self.account_number}"
+    
+class DumpPaystackData(TimeStampMixin):
+    """Model to represent paystack data."""
+
+    dump_data = models.TextField()
+    
+    def __str__(self):
+        return "paystack data"
 
